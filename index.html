@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no" />
+    <title>第七次全国人口普查专题监测</title>
+
+    <link rel="stylesheet" href="https://js.arcgis.com/4.28/esri/themes/light/main.css" />
+    
+    <style>
+        :root { --header-bg: #1e293b; --accent-blue: #38bdf8; }
+        html, body { padding: 0; margin: 0; height: 100%; width: 100%; font-family: "PingFang SC", sans-serif; overflow: hidden; }
+
+        /* 布局控制 */
+        #header { height: 60px; background: var(--header-bg); color: white; display: flex; align-items: center; padding: 0 30px; z-index: 100; box-shadow: 0 2px 10px rgba(0,0,0,0.3); }
+        #main-container { display: flex; height: calc(100% - 60px); width: 100%; }
+        #sidebar { width: 300px; background: #fff; border-right: 1px solid #e2e8f0; display: flex; flex-direction: column; }
+        .sidebar-header { padding: 15px 20px; background: #f8fafc; font-weight: 600; border-bottom: 1px solid #f1f5f9; }
+        #galleryDiv { flex: 1; overflow-y: auto; padding: 10px; }
+        #viewDiv { flex: 1; position: relative; background: #f0f0f0; }
+
+        .esri-ui .esri-component { border-radius: 8px !important; box-shadow: 0 4px 12px rgba(0,0,0,0.1) !important; }
+    </style>
+</head>
+
+<body>
+    <header id="header">
+        <div style="font-size: 1.2rem; font-weight: 500;">
+            第七次全国人口普查分省分析
+        </div>
+    </header>
+
+    <div id="main-container">
+        <aside id="sidebar">
+            <div class="sidebar-header">场景底图资源库</div>
+            <div id="galleryDiv"></div>
+        </aside>
+        <main id="viewDiv"></main>
+    </div>
+
+    <script src="https://js.arcgis.com/4.28/"></script>
+
+    <script>
+        require([
+            "esri/Map",
+            "esri/views/MapView",
+            "esri/layers/FeatureLayer",
+            "esri/widgets/BasemapGallery",
+            "esri/widgets/Legend",
+            "esri/widgets/ScaleBar",
+            "esri/widgets/Search",
+            "esri/widgets/LayerList",
+            "esri/widgets/Expand",
+            "esri/smartMapping/renderers/color"
+        ], (Map, MapView, FeatureLayer, BasemapGallery, Legend, ScaleBar, Search, LayerList, Expand, colorRendererCreator) => {
+
+            // 1. 定义省份标注样式 (LabelingInfo)
+            const provinceLabels = {
+                symbol: {
+                    type: "text",
+                    color: "#2c3e50", // 字体颜色
+                    haloColor: "white", // 字体光晕颜色，确保在深浅色块上都清晰
+                    haloSize: "1.5px",
+                    font: { size: 10, weight: "bold", family: "Microsoft YaHei" }
+                },
+                labelPlacement: "always-horizontal", // 标注位置
+                labelExpressionInfo: { expression: "$feature.province" } // 使用 province 字段
+            };
+
+            // 2. 加载人口普查矢量要素图层
+            const censusLayer = new FeatureLayer({
+                url: "https://www.geosceneonline.cn/server/rest/services/Hosted/第七次全国人口普查分省/FeatureServer",
+                title: "各省人口数据分布",
+                outFields: ["pop2020", "province"],
+                labelingInfo: [provinceLabels], // 注入标注
+                opacity: 0.9,
+                popupTemplate: {
+                    title: "行政区划：{province}",
+                    content: "2020年人口普查总数：<b style='color:#e67e22'>{pop2020}</b> 人"
+                }
+            });
+
+            const map = new Map({
+                basemap: "gray-vector",
+                layers: [censusLayer]
+            });
+
+            const view = new MapView({
+                container: "viewDiv",
+                map: map,
+                center: [105, 36],
+                zoom: 4
+            });
+
+            // 3. 动态分级渲染 (Smart Mapping)
+            view.whenLayerView(censusLayer).then((layerView) => {
+                colorRendererCreator.createClassBreaksRenderer({
+                    layer: censusLayer,
+                    field: "pop2020",
+                    theme: "high-to-low",
+                    classificationMethod: "natural-breaks",
+                    numClasses: 5 
+                }).then((response) => {
+                    const renderer = response.renderer.clone();
+                    renderer.classBreakInfos.forEach(info => {
+                        info.symbol.outline = { color: [255, 255, 255, 0.7], width: 1.2 };
+                    });
+                    censusLayer.renderer = renderer;
+                });
+            });
+
+            // 4. 必备微件部署
+            view.ui.add(new Search({ view: view }), "top-right");
+            
+            const layerList = new LayerList({ view: view });
+            view.ui.add(new Expand({
+                view: view,
+                content: layerList,
+                expandIconClass: "esri-icon-layers",
+                group: "top-right"
+            }), "top-right");
+
+            const legend = new Legend({ view: view });
+            view.ui.add(new Expand({
+                view: view,
+                content: legend,
+                expanded: true, 
+                expandIconClass: "esri-icon-legend"
+            }), "bottom-right");
+
+            view.ui.add(new ScaleBar({ view: view, unit: "metric", style: "line" }), "bottom-left");
+
+            // 5. 底图库
+            new BasemapGallery({
+                view: view,
+                container: "galleryDiv"
+            });
+        });
+    </script>
+</body>
+</html>
